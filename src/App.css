@@ -9,12 +9,22 @@
 }
 
 .app-header {
-  text-align: center;
   margin-bottom: 2rem;
   padding: 2rem;
   background: linear-gradient(135deg, #00D9FF 0%, #0088CC 100%);
   border-radius: 12px;
   color: white;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-content > div {
+  text-align: center;
+  flex: 1;
 }
 
 .app-header h1 {
@@ -26,6 +36,23 @@
   margin: 0;
   font-size: 1.1rem;
   opacity: 0.9;
+}
+
+.logout-button {
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid white;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.logout-button:hover {
+  background: white;
+  color: #0088CC;
 }
 
 .tabs {

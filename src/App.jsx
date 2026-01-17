@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import mockSalesforceAPI from './services/mockData'
+import salesforceAPI from './services/salesforceApi'
+import SalesforceLogin from './components/SalesforceLogin'
+import { parseAuthCallback, saveAuth, loadAuth, clearAuth } from './utils/authHandler'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658'];
 
+// デモモード（モックデータを使用）か実際のSalesforce接続か
+const USE_DEMO_MODE = !import.meta.env.VITE_SALESFORCE_CLIENT_ID;
+
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [useMockData, setUseMockData] = useState(USE_DEMO_MODE)
   const [loading, setLoading] = useState(false)
   const [accounts, setAccounts] = useState([])
   const [opportunities, setOpportunities] = useState([])
@@ -15,21 +23,51 @@ function App() {
   const [editingRecord, setEditingRecord] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
+  // 認証チェック
   useEffect(() => {
-    loadData()
-  }, [])
+    // OAuth コールバックを処理
+    const authData = parseAuthCallback();
+    if (authData) {
+      saveAuth(authData);
+      salesforceAPI.setAuth(authData.instanceUrl, authData.accessToken);
+      setIsAuthenticated(true);
+      setUseMockData(false);
+      // URLからハッシュを削除
+      window.history.replaceState(null, '', window.location.pathname);
+    } else {
+      // 既存の認証情報を確認
+      const savedAuth = loadAuth();
+      if (savedAuth && !useMockData) {
+        salesforceAPI.setAuth(savedAuth.instanceUrl, savedAuth.accessToken);
+        setIsAuthenticated(true);
+      } else if (useMockData) {
+        // デモモードの場合は自動的に認証済みとする
+        setIsAuthenticated(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [isAuthenticated])
 
   const loadData = async () => {
     setLoading(true)
     try {
-      // モックデータを読み込み
-      mockSalesforceAPI.setAuth('https://example.salesforce.com', 'mock-token')
+      const api = useMockData ? mockSalesforceAPI : salesforceAPI;
+
+      if (useMockData) {
+        // モックデータを読み込み
+        mockSalesforceAPI.setAuth('https://example.salesforce.com', 'mock-token')
+      }
 
       const [accountsData, opportunitiesData, oppStatsData, industryData] = await Promise.all([
-        mockSalesforceAPI.getAccounts(),
-        mockSalesforceAPI.getOpportunities(),
-        mockSalesforceAPI.getOpportunityStats(),
-        mockSalesforceAPI.getAccountsByIndustry(),
+        api.getAccounts(),
+        api.getOpportunities(),
+        api.getOpportunityStats(),
+        api.getAccountsByIndustry(),
       ])
 
       setAccounts(accountsData.records)
@@ -38,9 +76,21 @@ function App() {
       setIndustryStats(industryData.records)
     } catch (error) {
       console.error('データ読み込みエラー:', error)
+      alert('データの読み込みに失敗しました。認証情報を確認してください。')
+      // エラーの場合、ログアウト
+      handleLogout()
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleLogout = () => {
+    clearAuth()
+    setIsAuthenticated(false)
+    setAccounts([])
+    setOpportunities([])
+    setOpportunityStats([])
+    setIndustryStats([])
   }
 
   const formatCurrency = (amount) => {
@@ -58,7 +108,8 @@ function App() {
   const handleDelete = async (id, type) => {
     if (window.confirm('本当に削除しますか？')) {
       try {
-        await mockSalesforceAPI.deleteRecord(type, id)
+        const api = useMockData ? mockSalesforceAPI : salesforceAPI;
+        await api.deleteRecord(type, id)
         loadData()
         alert('削除しました')
       } catch (error) {
@@ -69,11 +120,12 @@ function App() {
 
   const handleSave = async () => {
     try {
+      const api = useMockData ? mockSalesforceAPI : salesforceAPI;
       if (editingRecord.Id) {
-        await mockSalesforceAPI.updateRecord(editingRecord.type, editingRecord.Id, editingRecord)
+        await api.updateRecord(editingRecord.type, editingRecord.Id, editingRecord)
         alert('更新しました')
       } else {
-        await mockSalesforceAPI.createRecord(editingRecord.type, editingRecord)
+        await api.createRecord(editingRecord.type, editingRecord)
         alert('作成しました')
       }
       setIsModalOpen(false)
@@ -84,11 +136,25 @@ function App() {
     }
   }
 
+  // 未認証の場合はログイン画面を表示
+  if (!isAuthenticated && !useMockData) {
+    return <SalesforceLogin onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Salesforce ダッシュボード</h1>
-        <p>取引先と商談の管理・分析</p>
+        <div className="header-content">
+          <div>
+            <h1>Salesforce ダッシュボード</h1>
+            <p>取引先と商談の管理・分析 {useMockData && '(デモモード)'}</p>
+          </div>
+          {!useMockData && (
+            <button className="logout-button" onClick={handleLogout}>
+              ログアウト
+            </button>
+          )}
+        </div>
       </header>
 
       <nav className="tabs">
